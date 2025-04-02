@@ -140,7 +140,7 @@ You'll need to input:
 Verify your setup with this command that lists the contents (without downloading):
 
 ```bash
-aws s3 ls s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/ --requester-payer requester
+aws s3 ls s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/ --request-payer requester
 ```
 
 You should see a list of GSE folders if your configuration is correct.
@@ -155,7 +155,7 @@ You should see a list of GSE folders if your configuration is correct.
 To download the entire CpGCorpus from our S3 bucket, run the following command:
 
 ```bash
-aws s3 sync s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw ./data/cpgcorpus/raw --requester-payer requester
+aws s3 sync s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw ./data/cpgcorpus/raw --request-payer requester
 ```
 
 </details>
@@ -206,7 +206,7 @@ The corpus includes multiple platforms:
 To download a specific dataset (for example, GSE163839 using platform GPL13534), run:
 
 ```bash
-aws s3 cp s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/GSE163839/GPL13534/betas/QCDPB.arrow ./data/GSE163839.arrow --requester-payer requester
+aws s3 cp s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/GSE163839/GPL13534/betas/QCDPB.arrow ./data/GSE163839.arrow --request-payer requester
 ```
 
 </details>
