@@ -15,6 +15,27 @@
 
 </div>
 
+**EXTREMELY IMPORTANT NOTE ABOUT DATA**: The data for CpGPT is hosted on an AWS S3 bucket with a requester-pays configuration. This means that <u>you will be charged</u> by AWS for the data you download. **The total cost for downloading all datasets will *exceed* <u>$150.00 USD</u> at the time of writing.** We will do our best to estimate the cost of downloading for you, but we cannot guarantee the accuracy of our estimate. To estimate the cost of downloading part of the bucket, you can use the following command:
+
+```bash
+S3_BUCKET='s3://cpgpt-lucascamillo-public'
+
+# Replace <PREFIX> with the s3 path you want to estimate the cost for example:
+BUCKET_PREFIX="${S3_BUCKET}/<PREFIX>/"
+# For example: BUCKET_PREFIX="${S3_BUCKET}/data/cpgcorpus/raw/"
+
+# To estimate the size of data and cost before downloading, use:
+TOTAL_SIZE=$(aws s3 ls --recursive --human-readable --summarize --request-payer requester $BUCKET_PREFIX | grep "Total Size")
+
+# Likely cost is $0.09 per GB downloaded.
+TOTAL_SIZE_GB=$(grep -oP 'Total Size: \K[0-9.]+' <<< "$TOTAL_SIZE")
+EXPECTED_COST=$(echo "$TOTAL_SIZE_GB" | python -c "print(float(input()) * 0.09)")
+
+# Print the estimated cost
+echo "Estimated cost to download all data: \$$EXPECTED_COST USD for $TOTAL_SIZE_GB GB"
+```
+
+
 ## 📋 Table of Contents
 
 - [📖 Overview](#-overview)
@@ -42,17 +63,31 @@ CpGPT is a foundation model for DNA methylation, trained on genome-wide DNA meth
 
 ### Installation Instructions
 
-We recommend using `poetry` for installation:
+Typical installation (`pip`):
+
+```bash
+pip install cpgpt
+```
+
+For local installation:
 
 ```bash
 # Clone the repository
 git clone https://github.com/lcamillo/CpGPT.git
 cd CpGPT
 
-# Install poetry if not available
-pip install poetry
+# Install poetry if you don't already have it
+curl -sSL https://install.python-poetry.org | python3 -
 
-# Install dependencies with Poetry
+# Install conda if you don't already have it
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
+bash ~/miniconda.sh
+
+# Create a conda environment
+conda create -y -n cpgpt python=3.12 pygraphviz
+conda activate cpgpt
+
+# Install dependencies in conda environment
 poetry install
 ```
 
@@ -140,7 +175,7 @@ You'll need to input:
 Verify your setup with this command that lists the contents (without downloading):
 
 ```bash
-aws s3 ls s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/ --requester-payer requester
+aws s3 ls --request-payer requester s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/
 ```
 
 You should see a list of GSE folders if your configuration is correct.
@@ -152,10 +187,10 @@ You should see a list of GSE folders if your configuration is correct.
 <details closed>
 <summary><b>Download the Full Corpus</b></summary>
 
-To download the entire CpGCorpus from our S3 bucket, run the following command:
+To download the entire CpGCorpus from our S3 bucket, run the following command. **SINCE YOU ARE USING A REQUESTER-PAYS-FOR-DATA CONFIGURATION, YOU WILL BE CHARGED BY AWS FOR THE DATA YOU DOWNLOAD, WHICH IS <u>~$100.00 USD</u> AT THE TIME OF WRITING.** 
 
 ```bash
-aws s3 sync s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw ./data/cpgcorpus/raw --requester-payer requester
+aws s3 sync s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw ./data/cpgcorpus/raw --request-payer requester
 ```
 
 </details>
