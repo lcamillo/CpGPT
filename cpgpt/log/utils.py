@@ -21,7 +21,7 @@ def get_class_logger(cls: type, log_dir: str = "logs") -> logger:
         sys.stdout,
         colorize=True,
         format=(
-            "<bold><blue>cpgpt</blue></bold>: "
+            "<bold><blue>cpgpt</blue></bold> -"
             "<cyan>{extra[class_name]}</cyan>: "
             "<level>{message}</level>"
         ),
@@ -35,7 +35,7 @@ def get_class_logger(cls: type, log_dir: str = "logs") -> logger:
 
     logger.add(
         log_file,
-        rotation="100 MB",
+        rotation="10 MB",
         level="DEBUG",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {extra[class_name]}: {message}",
     )

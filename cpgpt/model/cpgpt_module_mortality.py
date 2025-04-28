@@ -2,15 +2,26 @@ import os
 import sys
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import schedulefree
 import torch
 from lifelines import CoxPHFitter
 from lifelines.utils import concordance_index
-from torchmetrics import MaxMetric
+from sklearn.preprocessing import StandardScaler
+
+from cpgpt.loss.loss import (
+    c_index_loss,
+    censored_mae_loss,
+    cph_loss,
+    gompertz_aft_loss,
+    rsf_loss,
+)
 
 from .cpgpt_module import CpGPTLitModule
-from .utils import safe_clone
+from .utils import (
+    safe_clone,
+)
 
 
 class CpGPTMortalityLitModule(CpGPTLitModule):
@@ -34,11 +45,6 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
     ) -> None:
         """Initialize the CpGPTMortalityLitModule."""
         super().__init__(training, net, optimizer, scheduler, compile)
-
-        # Add mortality-specific metrics
-        self.val_c_index_best = MaxMetric()
-        self.val_z_score_best = MaxMetric()
-        self.val_hazard_ratio_best = MaxMetric()
 
         # Initialize prediction storage
         self.train_predictions = []
@@ -167,7 +173,9 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
                 {
                     "duration": all_times.cpu().numpy(),
                     "event": all_events.cpu().numpy(),
-                    "predictions": all_predictions.cpu().numpy(),
+                    "predictions": all_predictions.cpu().numpy()
+                    if all_predictions.ndim == 1
+                    else all_predictions.cpu().numpy()[:, 0],
                     "age": all_ages.cpu().numpy(),
                     "female": all_females.cpu().numpy(),
                 }
@@ -175,6 +183,11 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
 
             # Fit CoxPH model
             try:
+                # Standardize predictions, age, and female with a single scaler
+                scaler = StandardScaler()
+                features_to_scale = ["predictions", "age", "female"]
+                df[features_to_scale] = scaler.fit_transform(df[features_to_scale])
+
                 # Temporarily redirect stdout to suppress CoxPH output
                 original_stdout = sys.stdout
                 sys.stdout = open(os.devnull, "w")
@@ -186,11 +199,13 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
                 sys.stdout.close()
                 sys.stdout = original_stdout
 
-                # Get z-score from the model summary
-                z_score = abs(cph.summary.loc["predictions", "z"])
+                # Calculate z-score manually from coefficient and standard error
+                coef = cph.params_["predictions"]
+                se = cph.standard_errors_["predictions"]
+                z_score = abs(coef / se)
 
-                # Get hazard ratio from the model summary
-                hazard_ratio = cph.summary.loc["predictions", "exp(coef)"]
+                # Calculate hazard ratio
+                hazard_ratio = np.exp(coef)
 
                 # Calculate c-index
                 c_index = concordance_index(df["duration"], -df["predictions"], df["event"])
@@ -222,13 +237,20 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
                 {
                     "duration": all_times.cpu().numpy(),
                     "event": all_events.cpu().numpy(),
-                    "predictions": all_predictions.cpu().numpy(),
+                    "predictions": all_predictions.cpu().numpy()
+                    if all_predictions.ndim == 1
+                    else all_predictions.cpu().numpy()[:, 0],
                     "age": all_ages.cpu().numpy(),
                     "female": all_females.cpu().numpy(),
                 }
             )
 
             try:
+                # Standardize predictions, age, and female with a single scaler
+                scaler = StandardScaler()
+                features_to_scale = ["predictions", "age", "female"]
+                df[features_to_scale] = scaler.fit_transform(df[features_to_scale])
+
                 # Temporarily redirect stdout to suppress CoxPH output
                 original_stdout = sys.stdout
                 sys.stdout = open(os.devnull, "w")
@@ -241,46 +263,27 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
                 sys.stdout.close()
                 sys.stdout = original_stdout
 
-                # Get z-score from the model summary
-                z_score = abs(cph.summary.loc["predictions", "z"])
+                # Calculate z-score manually from coefficient and standard error
+                coef = cph.params_["predictions"]
+                se = cph.standard_errors_["predictions"]
+                z_score = abs(coef / se)
 
-                # Get hazard ratio from the model summary
-                hazard_ratio = cph.summary.loc["predictions", "exp(coef)"]
+                # Calculate hazard ratio
+                hazard_ratio = np.exp(coef)
 
                 # Calculate c-index
                 c_index = concordance_index(df["duration"], -df["predictions"], df["event"])
 
-                # Update best metrics
-                self.val_c_index_best.update(torch.tensor(c_index))
-                self.val_z_score_best.update(torch.tensor(z_score))
-                self.val_hazard_ratio_best.update(torch.tensor(hazard_ratio))
-
                 # Log metrics
                 self.log("val/c_index", c_index, sync_dist=True, prog_bar=True)
-                self.log(
-                    "val/c_index_best",
-                    self.val_c_index_best.compute(),
-                    sync_dist=True,
-                    prog_bar=True,
-                )
                 self.log("val/z_score", z_score, sync_dist=True, prog_bar=True)
-                self.log(
-                    "val/z_score_best",
-                    self.val_z_score_best.compute(),
-                    sync_dist=True,
-                    prog_bar=True,
-                )
                 self.log("val/hazard_ratio", hazard_ratio, sync_dist=True, prog_bar=True)
-                self.log(
-                    "val/hazard_ratio_best",
-                    self.val_hazard_ratio_best.compute(),
-                    sync_dist=True,
-                    prog_bar=True,
-                )
+
             except Exception:
-                self.log("val/c_index", 0.0, sync_dist=True)
-                self.log("val/z_score", 0.0, sync_dist=True)
-                self.log("val/hazard_ratio", 0.0, sync_dist=True)
+                # Ensure we use the same parameters for logging as in the try block
+                self.log("val/c_index", 0.0, sync_dist=True, prog_bar=True)
+                self.log("val/z_score", 0.0, sync_dist=True, prog_bar=True)
+                self.log("val/hazard_ratio", 0.0, sync_dist=True, prog_bar=True)
 
     def _shared_val_step(self, batch: dict[str, Any]) -> dict[str, torch.Tensor]:
         """Perform a shared validation step and store outputs for mortality metrics."""
@@ -346,6 +349,83 @@ class CpGPTMortalityLitModule(CpGPTLitModule):
         self._last_loss_inputs = loss_inputs
 
         return loss_inputs
+
+    def _calculate_losses(
+        self,
+        **kwargs: torch.Tensor | None,
+    ) -> dict[str, torch.Tensor]:
+        """Calculate the losses for the model.
+
+        Args:
+            **kwargs: Dictionary containing any of the following:
+                - pred_meth (torch.Tensor): Predicted methylation values
+                - pred_meth_unc (torch.Tensor): Predicted uncertainty
+                - meth (torch.Tensor): Target values
+                - mask_na (torch.Tensor): Mask for NA values
+                - sample_embedding (torch.Tensor): Sample embeddings
+                - sample_embedding_full (torch.Tensor): Sample embeddings with full data
+                - obsm (torch.Tensor): Observation matrix
+                - pred_conditions (torch.Tensor): Predicted conditions
+                - noise (torch.Tensor): Input noise for diffusion
+                - pred_noise (torch.Tensor): Predicted noise
+                - loss_mask (torch.Tensor): Mask for loss calculation
+
+        Returns:
+            Dict[str, torch.Tensor]: Dictionary containing calculated losses
+
+        """
+        # Filter obsm to match the number of columns in pred_conditions
+        kwargs_filtered = kwargs.copy()
+        pred_conditions = kwargs.get("pred_conditions")
+        obsm = kwargs.get("obsm")
+        if pred_conditions is not None and obsm is not None:
+            if pred_conditions.shape[1] < obsm.shape[1]:
+                kwargs_filtered["obsm"] = obsm[:, -pred_conditions.shape[1] :]
+
+        # Call the parent implementation to get base losses with filtered kwargs
+        losses = super()._calculate_losses(**kwargs_filtered)
+
+        # Calculate condition losses if available
+        pred_conditions = kwargs.get("pred_conditions")
+        obsm = kwargs.get("obsm")
+        if pred_conditions is not None and obsm is not None:
+            condition_loss_type = self.hparams.training.get("condition_decoder_loss")
+            if condition_loss_type == "censored_mae_loss":
+                time, event = obsm[:, 0], obsm[:, 1]
+                losses["condition_loss"] = censored_mae_loss(pred_conditions, time, event).mean()
+            elif condition_loss_type == "c_index_loss":
+                time, event, age, female = obsm[:, 0], obsm[:, 1], obsm[:, 2], obsm[:, 3]
+                losses["condition_loss"] = c_index_loss(
+                    pred_conditions, time, event, age, female
+                ).mean()
+            elif condition_loss_type == "cph_loss":
+                time, event = obsm[:, 0], obsm[:, 1]
+                losses["condition_loss"] = cph_loss(pred_conditions, time, event).mean()
+            elif condition_loss_type == "gompertz_aft_loss":
+                time, event, age, female = obsm[:, 0], obsm[:, 1], obsm[:, 2], obsm[:, 3]
+                losses["condition_loss"] = gompertz_aft_loss(
+                    pred_conditions,
+                    time,
+                    age,
+                    female,
+                    event,
+                ).mean()
+            elif condition_loss_type == "rsf_loss":
+                time, event = obsm[:, 0], obsm[:, 1]
+                losses["condition_loss"] = rsf_loss(pred_conditions, time, event).mean()
+
+            # Check for NaN and replace with zero if found
+            if "condition_loss" in losses and torch.isnan(losses["condition_loss"]):
+                losses["condition_loss"] = torch.tensor(
+                    0.0, device=losses["condition_loss"].device
+                )
+
+            losses["loss"] += (
+                self.hparams.training["loss_weights"].get("condition_loss", 0.0)
+                * losses["condition_loss"]
+            )
+
+        return losses
 
 
 if __name__ == "__main__":

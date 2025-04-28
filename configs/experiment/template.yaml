@@ -62,7 +62,7 @@ data:
 callbacks:
   model_checkpoint:
     monitor: "val/condition_loss"
-    filename: "${tags[0]}"
+    filename: "step_{step:06d}"
 
 # ===== Checkpoint Configuration =====
 # Set to false when loading pretrained models with different architectures
@@ -74,4 +74,4 @@ model_ckpt_path: ${paths.dependencies_dir}/model/weights/small.ckpt
 # ===== Hydra Configuration =====
 hydra:
   run:
-    dir: ${paths.log_dir}/experiments/${tags[0]}
+    dir: ${paths.log_dir}/experiments/${tags[0]}/${now:%Y-%m-%d_%H-%M-%S}

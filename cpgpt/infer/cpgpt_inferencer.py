@@ -384,7 +384,7 @@ class CpGPTInferencer:
             raise
 
         self.logger.info(f"Successfully downloaded {species} dependencies.")
-        return None
+        return
 
     def download_cpgcorpus_dataset(
         self, gse_id: str, overwrite: bool = False, data_dir: str | None = None
@@ -486,7 +486,7 @@ class CpGPTInferencer:
             raise
 
         self.logger.info(f"Successfully downloaded dataset {gse_id}.")
-        return None
+        return
 
     def load_cpgpt_config(
         self,

@@ -10,15 +10,10 @@ from torchmetrics import MeanMetric, MinMetric
 
 from cpgpt.loss.loss import (
     beta_loss,
-    c_index_loss,
-    censored_mae_loss,
     consistency_loss,
     contrastive_loss,
-    cph_loss,
-    gompertz_aft_loss,
     kld_bernoulli_loss,
     kld_normal_loss,
-    rsf_loss,
     wd_loss,
 )
 
@@ -1280,6 +1275,10 @@ class CpGPTLitModule(LightningModule):
                 losses["condition_loss"] = F.l1_loss(pred_conditions, obsm).mean()
             elif condition_loss_type == "mse":
                 losses["condition_loss"] = F.mse_loss(pred_conditions, obsm).mean()
+            elif condition_loss_type == "huber":
+                losses["condition_loss"] = F.huber_loss(pred_conditions, obsm).mean()
+            elif condition_loss_type == "cosine_similarity":
+                losses["condition_loss"] = 1 - F.cosine_similarity(pred_conditions, obsm).mean()
             elif condition_loss_type == "ce":
                 losses["condition_loss"] = F.cross_entropy(pred_conditions, obsm).mean()
             elif condition_loss_type == "bce":
@@ -1287,35 +1286,11 @@ class CpGPTLitModule(LightningModule):
                     pred_conditions,
                     obsm,
                 ).mean()
-            elif condition_loss_type == "censored_mae_loss":
-                time, event = obsm[:, 0], obsm[:, 1]
-                losses["condition_loss"] = censored_mae_loss(pred_conditions, time, event).mean()
-            elif condition_loss_type == "c_index_loss":
-                time, event, age, female = obsm[:, 0], obsm[:, 1], obsm[:, 2], obsm[:, 3]
-                losses["condition_loss"] = c_index_loss(
-                    pred_conditions, time, event, age, female
-                ).mean()
-            elif condition_loss_type == "cph_loss":
-                time, event = obsm[:, 0], obsm[:, 1]
-                losses["condition_loss"] = cph_loss(pred_conditions, time, event).mean()
-            elif condition_loss_type == "gompertz_aft_loss":
-                time, event = obsm[:, 0], obsm[:, 1]
-                losses["condition_loss"] = gompertz_aft_loss(
-                    pred_conditions,
-                    time,
-                    event,
-                    0.005,  # lambda_param: typical US population value
-                    0.1,  # gamma: typical US population value
-                ).mean()
-            elif condition_loss_type == "rsf_loss":
-                time, event = obsm[:, 0], obsm[:, 1]
-                losses["condition_loss"] = rsf_loss(pred_conditions, time, event).mean()
 
             # Check for NaN and replace with zero if found
-            if torch.isnan(losses["condition_loss"]):
+            if "condition_loss" in losses and torch.isnan(losses["condition_loss"]):
                 losses["condition_loss"] = torch.tensor(
-                    0.0,
-                    device=losses["condition_loss"].device,
+                    0.0, device=losses["condition_loss"].device
                 )
 
         # Define which losses to include for validation
