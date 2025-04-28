@@ -224,6 +224,7 @@ pyaging_data/
 /tutorials/*
 !/tutorials/quick_setup.ipynb
 !/tutorials/reference_map.ipynb
+!/tutorials/predict_mortality.ipynb
 /docker/
 /.github/
 /configs/data/*
