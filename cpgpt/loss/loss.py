@@ -104,129 +104,6 @@ def kld_normal_loss(sample_embedding: torch.Tensor) -> torch.Tensor:
     return 0.5 * torch.mean(mu.pow(2) + var - log_var - 1)
 
 
-def gompertz_aft_loss(
-    beta_x: torch.Tensor,
-    time: torch.Tensor,
-    event: torch.Tensor,
-    lambda_param: torch.Tensor | float,
-    gamma: torch.Tensor | float,
-    epsilon: float = 1e-6,
-    regularization_weight: float = 0.1,
-    adaptive_regularization: bool = True,
-) -> torch.Tensor:
-    """Calculate the Gompertz Accelerated Failure Time (AFT) loss with learnable parameters.
-
-    This improved implementation supports batch-wise or sample-wise lambda and gamma parameters,
-    with adaptive regularization based on the current batch statistics.
-
-    Args:
-        beta_x (torch.Tensor): The linear predictor (beta * X) for each sample.
-        time (torch.Tensor): The observed follow-up time for each sample.
-        event (torch.Tensor): Binary indicator of whether the event occurred (1) or censored (0).
-        lambda_param (torch.Tensor | float): The scale parameter(s) of the Gompertz distribution.
-            Can be a scalar float or a tensor for batch/sample-specific values.
-        gamma (torch.Tensor | float): The shape parameter(s) of the Gompertz distribution.
-            Can be a scalar float or a tensor for batch/sample-specific values.
-        epsilon (float, optional): Small constant to avoid numerical instability. Defaults to 1e-6.
-        regularization_weight (float, optional): Weight for parameter regularization.
-            Defaults to 0.1.
-        adaptive_regularization (bool, optional): Whether to use adaptive regularization
-            based on batch statistics. Defaults to True.
-
-    Returns:
-        torch.Tensor: The negative log-likelihood loss with parameter regularization.
-
-    """
-    # Convert parameters to tensors if they're scalars
-    if isinstance(lambda_param, float):
-        lambda_param = torch.tensor(lambda_param, device=beta_x.device)
-    if isinstance(gamma, float):
-        gamma = torch.tensor(gamma, device=beta_x.device)
-
-    # Ensure parameters have proper shape for broadcasting
-    batch_size = beta_x.size(0)
-    if lambda_param.dim() == 0:
-        lambda_param = lambda_param.expand(batch_size)
-    if gamma.dim() == 0:
-        gamma = gamma.expand(batch_size)
-
-    # Ensure positive values for lambda and gamma (via softplus or clamp)
-    lambda_param = torch.nn.functional.softplus(lambda_param)
-    gamma = torch.nn.functional.softplus(gamma)
-
-    # Apply reasonable bounds to prevent extreme values
-    lambda_param = torch.clamp(lambda_param, min=1e-4, max=0.05)
-    gamma = torch.clamp(gamma, min=0.01, max=0.3)
-
-    # Compute the linear predictor term
-    exp_beta_x = torch.exp(beta_x)
-
-    # Compute the time-dependent term for the Gompertz model (with stability measures)
-    # Reshape parameters for proper broadcasting
-    lambda_param_view = lambda_param.view(-1, 1) if lambda_param.dim() == 1 else lambda_param
-    gamma_view = gamma.view(-1, 1) if gamma.dim() == 1 else gamma
-
-    # Gompertz AFT survival function
-    exp_term = torch.exp(gamma_view * time * exp_beta_x)
-    # Clip exponentiated term to prevent overflow
-    exp_term = torch.clamp(exp_term, min=1.0 + epsilon, max=50.0)
-
-    # Compute survival function (S) with numerical stability
-    log_S = -(lambda_param_view / gamma_view) * (exp_term - 1)
-    S = torch.exp(torch.clamp(log_S, max=0.0))
-
-    # Compute hazard function (h) with numerical stability
-    h = lambda_param_view * exp_term
-    h = torch.clamp(h, min=epsilon)
-
-    # Log-likelihood for uncensored data (event occurred)
-    ll_uncensored = event * (torch.log(h) + log_S)
-
-    # Log-likelihood for censored data
-    ll_censored = (1 - event) * torch.log(S)
-
-    # Total negative log-likelihood (per sample)
-    nll = -(ll_uncensored + ll_censored)
-
-    # Apply adaptive regularization if enabled
-    if adaptive_regularization:
-        # Calculate median values for this batch to use as regularization targets
-        lambda_median = lambda_param.median()
-        gamma_median = gamma.median()
-
-        # Compute parameter variance within the batch
-        lambda_var = ((lambda_param - lambda_median) ** 2).mean()
-        gamma_var = ((gamma - gamma_median) ** 2).mean()
-
-        # Add regularization to promote consistency across the batch
-        # This helps stabilize learning when batch size is small
-        reg_loss = regularization_weight * (lambda_var + gamma_var)
-
-        # Add a weak L2 penalty to keep parameters close to reasonable values
-        lambda_center = 0.005  # Center point for lambda regularization
-        gamma_center = 0.1  # Center point for gamma regularization
-        center_reg = 0.01 * (
-            (lambda_median - lambda_center) ** 2 + (gamma_median - gamma_center) ** 2
-        )
-
-        return nll.mean() + reg_loss + center_reg
-    # Traditional fixed-range regularization
-    lambda_range = (0.0001, 0.01)
-    gamma_range = (0.05, 0.15)
-
-    # Calculate per-parameter penalties
-    lambda_penalty = torch.mean(
-        (torch.relu(lambda_param - lambda_range[1]) + torch.relu(lambda_range[0] - lambda_param))
-        ** 2
-    )
-    gamma_penalty = torch.mean(
-        (torch.relu(gamma - gamma_range[1]) + torch.relu(gamma_range[0] - gamma)) ** 2
-    )
-
-    # Add penalties with weight
-    return nll.mean() + regularization_weight * (lambda_penalty + gamma_penalty)
-
-
 def cph_loss(
     pred: torch.Tensor,
     times: torch.Tensor,
@@ -343,18 +220,21 @@ def c_index_loss(
     actual_times: torch.Tensor,
     events: torch.Tensor,
     age: torch.Tensor,
-    sex: torch.Tensor,
+    female: torch.Tensor,
     sigma: float = 0.01,
     time_weights: bool = True,
-    beta: float = 0.1,
+    regularization_weight: float = 0.1,
     gompertz_transform: bool = False,
-    baseline_weights: tuple = (0.025, -0.15),  # Hyperparameters for age and sex based on GrimAge2
+    female_years_equivalent: float = 5.0,
+    baseline_weight: float = 0.0005,
+    decorr_weight: float = 0.01,
+    epsilon: float = 1e-7,
 ) -> torch.Tensor:
     """Compute a differentiable approximation of the C-index loss that captures
-    the risk prediction additional to age and sex.
+    the risk prediction additional to age and female.
 
-    This function computes a baseline risk using a linear combination of age and sex:
-        baseline_risk = baseline_weights[0] * age + baseline_weights[1] * sex
+    This function computes a baseline risk using a linear combination of age and female:
+        baseline_risk = baseline_weights[0] * age + baseline_weights[1] * female
     and then calculates the "additional" risk as:
         additional_risk = predicted_risks - baseline_risk
     The loss is then computed on these residuals.
@@ -364,30 +244,34 @@ def c_index_loss(
         actual_times (torch.Tensor): Observed times (for events or censoring).
         events (torch.Tensor): Event indicators (1 if event occurred, 0 if censored).
         age (torch.Tensor): Age labels (continuous).
-        sex (torch.Tensor): Sex labels (e.g., 0 or 1).
+        female (torch.Tensor): Female labels (e.g., 0 or 1).
         sigma (float, optional): Smoothing parameter for the sigmoid function.
             Defaults to 0.1.
         time_weights (bool, optional): Whether to weight pairs by time differences.
             Defaults to True.
-        beta (float, optional): L2 regularization strength on additional risks.
+        regularization_weight (float, optional): L2 regularization strength on additional risks.
             Defaults to 0.001.
         gompertz_transform (bool, optional): Whether to apply a gompertz transform to the
             predicted risks. Defaults to True.
-        baseline_weights (tuple, optional): Coefficients for age and sex in the baseline
-            risk model. Defaults to (0.01, 0.01).
+        female_years_equivalent (float, optional): Number of years equivalent to female.
+            Defaults to 5.0.
+        baseline_weight (float, optional): Weight for the baseline risk.
+            Defaults to 0.001.
+        decorr_weight (float, optional): Weight for the decorrelation penalty.
+            Defaults to 0.1.
 
     Returns:
         torch.Tensor: Adjusted c-index loss (to be minimized).
 
     """
-    # Compute baseline risk from age and sex
-    baseline_risk = baseline_weights[0] * age.float() + baseline_weights[1] * sex.float()
+    # Compute baseline risk from age and female
+    baseline_risk = baseline_weight * (age.float() - female_years_equivalent * female.float())
 
     # Apply gompertz transform if requested
     if gompertz_transform:
         predicted_risks = torch.exp(predicted_risks) * torch.exp(0.1 * predicted_risks)
 
-    # Compute the additional risk (i.e. risk beyond age and sex)
+    # Compute the additional risk (i.e. risk beyond age and female)
     additional_risk = predicted_risks.float().squeeze(1) - baseline_risk
 
     # Flatten inputs for pairwise computations
@@ -433,22 +317,40 @@ def c_index_loss(
     risk_diff = risk_i - risk_j
 
     # To handle ties in predicted risks, add a small random noise
-    tie_noise = (torch.rand_like(risk_diff) - 0.5) * 1e-6
-    risk_diff = risk_diff + tie_noise * (torch.abs(risk_diff) < 1e-6).float()
+    tie_noise = (torch.rand_like(risk_diff) - 0.5) * epsilon
+    risk_diff = risk_diff + tie_noise * (torch.abs(risk_diff) < epsilon).float()
 
     # Smooth approximation using sigmoid
     indicator = torch.sigmoid(risk_diff / sigma)
 
     # Compute the weighted concordance
-    concordance = torch.sum(weights * indicator) / (torch.sum(weights) + 1e-8)
+    concordance = torch.sum(weights * indicator) / (torch.sum(weights) + epsilon)
 
     # Loss is 1 - concordance
     loss = 1 - concordance
 
     # Optionally add L2 regularization on the additional risks
-    if beta > 0:
-        l2_reg = beta * torch.mean(additional_risk**2)
+    if regularization_weight > 0:
+        l2_reg = regularization_weight * torch.mean(additional_risk**2)
         loss = loss + l2_reg
+
+    # Optionally add decorrelation penalty
+    if decorr_weight > 0:
+        # Center the risks
+        add_centered = additional_risk - additional_risk.mean()
+        base_centered = baseline_risk.view(-1) - baseline_risk.view(-1).mean()
+
+        # Compute covariance
+        covariance = torch.mean(add_centered * base_centered)
+
+        # Compute standard deviations
+        std_add = torch.sqrt(torch.mean(add_centered**2) + epsilon)
+        std_base = torch.sqrt(torch.mean(base_centered**2) + epsilon)
+
+        # Compute correlation
+        corr = covariance / (std_add * std_base + epsilon)
+        decorr_penalty = decorr_weight * (corr**2)
+        loss = loss + decorr_penalty
 
     return loss
 
@@ -656,3 +558,91 @@ def rsf_loss(pred_risks, times, events, num_trees=100):
         total_loss += loss
 
     return total_loss / num_trees
+
+
+def gompertz_aft_loss(
+    pred_params: torch.Tensor,  # Shape [batch_size, 2]
+    time: torch.Tensor,
+    event: torch.Tensor,
+    age: torch.Tensor = None,
+    sex: torch.Tensor = None,
+    baseline_adjustment: bool = True,
+    regularization_weight: float = 0.01,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """Gompertz AFT loss for CpGPT that optimizes for better z-scores.
+
+    Args:
+        pred_params: Model predictions with shape [batch_size, 2] where:
+                     - pred_params[:,0] = log(lambda) parameter
+                     - pred_params[:,1] = log(alpha) parameter
+        time: Observed survival/follow-up times
+        event: Event indicators (1=event occurred, 0=censored)
+        age: Age values (optional, for baseline adjustment)
+        sex: Sex values (optional, for baseline adjustment)
+        baseline_adjustment: Whether to apply baseline adjustment with age/sex
+        regularization_weight: Weight for regularization terms
+        eps: Small value for numerical stability
+
+    Returns:
+        torch.Tensor: The negative log-likelihood loss
+
+    """
+    # Extract parameters from predictions
+    log_lambda = pred_params[:, 0]
+    log_alpha = pred_params[:, 1]
+
+    # Apply baseline adjustment if requested
+    if baseline_adjustment and age is not None and sex is not None:
+        # Simple baseline adjustment (similar to c_index_loss)
+        baseline_lambda_adj = 0.001 * age.float() + (-0.003) * sex.float()
+        log_lambda = log_lambda + baseline_lambda_adj
+
+    # Ensure numerical stability with exp/softplus
+    lambda_param = torch.exp(log_lambda)
+    alpha_param = torch.exp(log_alpha)
+
+    # Apply reasonable bounds
+    lambda_param = torch.clamp(lambda_param, min=1e-4, max=0.05)
+    alpha_param = torch.clamp(alpha_param, min=0.01, max=0.3)
+
+    # Compute survival function and hazard
+    # S(t) = exp(-(lambda/alpha) * (exp(alpha*t) - 1))
+    # h(t) = lambda * exp(alpha*t)
+
+    exp_term = torch.exp(alpha_param * time)
+    log_S = -(lambda_param / alpha_param) * (exp_term - 1)
+    torch.exp(torch.clamp(log_S, max=0.0))
+
+    h = lambda_param * exp_term
+    h = torch.clamp(h, min=eps)
+
+    # Log-likelihood for uncensored data (event occurred)
+    ll_uncensored = event * (torch.log(h) + log_S)
+
+    # Log-likelihood for censored data
+    ll_censored = (1 - event) * log_S
+
+    # Total negative log-likelihood
+    nll = -(ll_uncensored + ll_censored)
+
+    # Parameter variance regularization to increase z-scores
+    # Lower variance = more significant effect = higher z-score
+    lambda_variance = torch.var(lambda_param)
+    alpha_variance = torch.var(alpha_param)
+
+    # Z-score optimization terms:
+    # 1. Maximize effect size (separation between groups)
+    event_mask = event == 1
+    if torch.sum(event_mask) > 1 and torch.sum(~event_mask) > 1:
+        lambda_event = lambda_param[event_mask]
+        lambda_censored = lambda_param[~event_mask]
+        effect_size_term = -torch.abs(lambda_event.mean() - lambda_censored.mean())
+    else:
+        effect_size_term = 0.0
+
+    # 2. Minimize within-group variance for more significant effect
+    variance_term = lambda_variance + alpha_variance
+
+    # Combine all terms
+    return nll.mean() + regularization_weight * (variance_term + 0.5 * effect_size_term)

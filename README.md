@@ -28,6 +28,10 @@
 - [☎️ Contact](#-contact)
 - [📜 License](#-license)
 
+## NEW: The first bio foundation model with chain-of-thought inference 🧠⚙️🧠⚙️🧠
+
+Given CpGPT's generative capabilities, we have implemented an analogous version of the chain-of-thought used in NLP tasks but for the reconstruction of methylation patterns. For more information about the method, please check out our [preprint](https://www.biorxiv.org/content/10.1101/2024.10.24.619766v1). To try it out yourself, please go to the [quick setup tutorial](https://github.com/lcamillo/CpGPT/blob/main/tutorials/quick_setup.ipynb).
+
 ## 📖 Overview
 
 CpGPT is a foundation model for DNA methylation, trained on genome-wide DNA methylation data. It can generate, impute, and embed methylation profiles, and can be finetuned for various downstream tasks.
@@ -140,7 +144,7 @@ You'll need to input:
 Verify your setup with this command that lists the contents (without downloading):
 
 ```bash
-aws s3 ls s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/ --requester-payer requester
+aws s3 ls s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/ --request-payer requester
 ```
 
 You should see a list of GSE folders if your configuration is correct.
@@ -155,7 +159,7 @@ You should see a list of GSE folders if your configuration is correct.
 To download the entire CpGCorpus from our S3 bucket, run the following command:
 
 ```bash
-aws s3 sync s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw ./data/cpgcorpus/raw --requester-payer requester
+aws s3 sync s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw ./data/cpgcorpus/raw --request-payer requester
 ```
 
 </details>
@@ -206,7 +210,7 @@ The corpus includes multiple platforms:
 To download a specific dataset (for example, GSE163839 using platform GPL13534), run:
 
 ```bash
-aws s3 cp s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/GSE163839/GPL13534/betas/QCDPB.arrow ./data/GSE163839.arrow --requester-payer requester
+aws s3 cp s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/GSE163839/GPL13534/betas/QCDPB.arrow ./data/GSE163839.arrow --request-payer requester
 ```
 
 </details>
@@ -214,6 +218,8 @@ aws s3 cp s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/GSE163839/GPL13534/b
 ## 🐘 Model Zoo
 
 There are several versions of CpGPT, mainly divided into pretrained and finetuned models. Below, you can find a table with a summary of such versions including the model name for download.
+
+> ⚠️ **Important**: All of the models were trained with 16-mixed precision. Therefore, make sure to use that when declaring `CpGPTTrainer`, otherwise results may differ.
 
 <details open>
 <summary><b>Pre-trained Models</b></summary>
@@ -232,21 +238,21 @@ There are several versions of CpGPT, mainly divided into pretrained and finetune
 
 We provide specialized pre-trained models for common tasks:
 
-| Model                       | Parameters | Description                                              | Output                                                                 | Model Name            |
-| --------------------------- | ---------- | -------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------- |
-| CpGPT-2M-Age                | ~2.9M      | Multi-tissue chronological age predictor                 | Age in years                                                           | `age`                 |
-| CpGPT-2M-AverageAdultWeight | ~2.9M      | Multi-tissue, pan-mammalian weight predictor             | Log1p of average adult weight in kilograms                             | `average_adultweight` |
-| CpGPT-100M-BoA              | ~101M      | EPICv2 blood imputation                                  | No phenotype is predicted                                              | `boa`                 |
-| CpGPT-2M-Cancer             | ~2.9M      | Multi-tissue cancer predictor                            | Logits of cancer status (use sigmoid to get probabilities)             | `cancer`              |
-| CpGPT-2M-ClockProxies       | ~3.1M      | Blood proxies of five epigenetic clocks                  | altumage, dunedinpace (x100), grimage2, hrsinchphenoage, pchorvath2013 | `clock_proxies`       |
-| CpGPT-2M-EpicMammal         | ~2.5M      | Blood EPIC-Mammalian array converter                     | No phenotype is predicted                                              | `epicvmammal`         |
-| CpGPT-100M-Hannum           | ~101M      | 450k blood imputation                                    | No phenotype is predicted                                              | `hannum`              |
-| CpGPT-100M-HumanRRBSAtlas   | ~101M      | Multi-tissue RRBS imputation                             | No phenotype is predicted                                              | `human_rrbs_atlas`    |
-| CpGPT-100M-Mammalian        | ~101M      | Multi-tissue, pan-mammalian mammalian array imputation   | No phenotype is predicted                                              | `mammalian`           |
-| CpGPT-2M-MaxLifespan        | ~2.9M      | Multi-tissue, pan-mammalian max lifespan predictor       | Log1p of max lifespan in years                                         | `maximum_lifespan`    |
-| CpGPT-2M-Mortality          | ~2.9M      | Blood mortality predictor. Please use strict_load=False. | Risk score                                                             | `mortality`           |
-| CpGPT-2M-RelativeAge        | ~2.9M      | Multi-tissue, pan-mammalian relative age predictor       | Relative age (0 to 1)                                                  | `relative_age`        |
-| CpGPT-100M-sciMETv3         | ~101M      | Brain, single-cell imputation                            | No phenotype is predicted                                              | `scimetv3`            |
+| Model                       | Parameters | Description                                            | Output                                                                 | Model Name            |
+| --------------------------- | ---------- | ------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------- |
+| CpGPT-2M-Age                | ~2.9M      | Multi-tissue chronological age predictor               | Age in years                                                           | `age_cot`             |
+| CpGPT-2M-AverageAdultWeight | ~2.9M      | Multi-tissue, pan-mammalian weight predictor           | Log1p of average adult weight in kilograms                             | `average_adultweight` |
+| CpGPT-100M-BoA              | ~101M      | EPICv2 blood imputation                                | No phenotype is predicted                                              | `boa`                 |
+| CpGPT-2M-Cancer             | ~2.9M      | Multi-tissue cancer predictor                          | Logits of cancer status (use sigmoid to get probabilities)             | `cancer`              |
+| CpGPT-2M-ClockProxies       | ~3.1M      | Blood proxies of five epigenetic clocks                | altumage, dunedinpace (x100), grimage2, hrsinchphenoage, pchorvath2013 | `clock_proxies`       |
+| CpGPT-2M-EpicMammal         | ~2.5M      | Blood EPIC-Mammalian array converter                   | No phenotype is predicted                                              | `epicvmammal`         |
+| CpGPT-100M-Hannum           | ~101M      | 450k blood imputation                                  | No phenotype is predicted                                              | `hannum`              |
+| CpGPT-100M-HumanRRBSAtlas   | ~101M      | Multi-tissue RRBS imputation                           | No phenotype is predicted                                              | `human_rrbs_atlas`    |
+| CpGPT-100M-Mammalian        | ~101M      | Multi-tissue, pan-mammalian mammalian array imputation | No phenotype is predicted                                              | `mammalian`           |
+| CpGPT-2M-MaxLifespan        | ~2.9M      | Multi-tissue, pan-mammalian max lifespan predictor     | Log1p of max lifespan in years                                         | `maximum_lifespan`    |
+| CpGPT-2M-Proteins           | ~3.1M      | Blood plasma proteins predictor.                       | Mean 0 and variance 1 normalized protein values                        | `proteins`            |
+| CpGPT-2M-RelativeAge        | ~2.9M      | Multi-tissue, pan-mammalian relative age predictor     | Relative age (0 to 1)                                                  | `relative_age`        |
+| CpGPT-100M-sciMETv3         | ~101M      | Brain, single-cell imputation                          | No phenotype is predicted                                              | `scimetv3`            |
 
 </details>
 
@@ -257,13 +263,18 @@ More tutorials will be added soon!
 <div class="tutorial-cards" style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px;">
   <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; width: 250px;">
     <h3>🔬 Quick setup</h3>
-    <p>Basic introduction to CpGPT and its capabilities</p>
+    <p>Basic introduction to CpGPT and its capabilities for sample embedding, phenotype prediction, and methylation reconstruction</p>
     <a href="tutorials/quick_setup.ipynb">View Tutorial</a>
   </div>
   <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; width: 250px;">
     <h3>🗺️ Reference map</h3>
-    <p>Zero-shot label transfer to a reference dataset</p>
+    <p>Zero-shot label transfer of target data to a reference dataset</p>
     <a href="tutorials/reference_map.ipynb">View Tutorial</a>
+  </div>
+  <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; width: 250px;">
+    <h3>☠️ Predict mortality</h3>
+    <p>Predict biological age with CpGPTGrimAge3, the best DNA methylation mortality predictor</p>
+    <a href="tutorials/predict_mortality.ipynb">View Tutorial</a>
   </div>
 </div>
 
@@ -379,7 +390,7 @@ callbacks:
     monitor: "val/condition_loss"  # Options: val/loss, val/condition_loss, etc.
 
     # Filename pattern for saved checkpoints
-    filename: "${tags[0]}"  # Uses the first tag as filename
+    filename: "step_{step:06d}"  # Uses the first tag as filename
 
     # Save mode
     mode: "min"  # min for losses, max for metrics like accuracy
