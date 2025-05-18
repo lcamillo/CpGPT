@@ -219,6 +219,8 @@ aws s3 cp s3://cpgpt-lucascamillo-public/data/cpgcorpus/raw/GSE163839/GPL13534/b
 
 There are several versions of CpGPT, mainly divided into pretrained and finetuned models. Below, you can find a table with a summary of such versions including the model name for download.
 
+> ⚠️ **Important**: All of the models were trained with 16-mixed precision. Therefore, make sure to use that when declaring `CpGPTTrainer`, otherwise results may differ.
+
 <details open>
 <summary><b>Pre-trained Models</b></summary>
 
