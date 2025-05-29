@@ -8,7 +8,7 @@
 [![PyPI](https://img.shields.io/pypi/v/CpGPT.svg)](https://pypi.org/project/CpGPT/)
 [![PyTorch 2.5+](https://img.shields.io/badge/torch-2.5+-ee4c2c.svg)](https://pytorch.org/get-started/locally/)
 [![Lightning 2.5+](https://img.shields.io/badge/lightning-2.5+-792ee5.svg)](https://lightning.ai/)
-[![License](https://img.shields.io/badge/License-Non_Commercial-red.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![arXiv](https://img.shields.io/badge/bioRxiv-2024.10.24.619766-b31b1b.svg)](https://www.biorxiv.org/content/10.1101/2024.10.24.619766v1)
 
 [![Typing SVG](https://readme-typing-svg.herokuapp.com?font=Fira+Code&pause=1000&color=2E98FF&center=true&vCenter=true&width=600&lines=A+foundation+model+for+DNA+methylation;Generate%2C+impute%2C+and+embed+methylation+profiles;Fine-tune+for+epigenetics+and+aging+research;CpGCpGCpGCpGCpGCpGCpGCpGCpGCpGCpGCpG)](https://github.com/lcamillo/CpGPT)
@@ -470,7 +470,7 @@ The default for that parameter is 2, which effectively means that generative tra
 
 <details>
 <summary><b>Can I use CpGPT for commercial purposes?</b></summary>
-The current release is for non-commercial research purposes only. Please contact us for licensing information for commercial use.
+Yes, CpGPT is licensed under the MIT License, which allows commercial use. However, there is one specific restriction: the software cannot be used to participate in biomarkers of aging challenges, competitions, contests, or any competitive events that offer monetary prizes or financial rewards related to aging biomarkers or longevity research.
 </details>
 
 ## 📚 Citation
@@ -494,7 +494,7 @@ For contact, please email lucas_camillo@alumni.brown.edu.
 
 ## 📜 License
 
-This project is licensed for non-commercial research purposes only. See [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License with one specific restriction: the software cannot be used to participate in public competitions with monetary prizes. See [LICENSE](LICENSE) for full details.
 
 ______________________________________________________________________
 
