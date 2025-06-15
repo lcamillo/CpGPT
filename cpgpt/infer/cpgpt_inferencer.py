@@ -340,25 +340,61 @@ class CpGPTInferencer:
         target_dir = Path(f"{target_dir_base}/{species}")
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # If target directory already has content and overwrite is False, skip download
-        if any(target_dir.iterdir()) and not overwrite:
-            self.logger.info(
-                f"Dependencies for {species} already exist at {target_dir} (skipping download)."
-            )
-            return
-
         # Download the dependencies
         s3_prefix = f"dependencies/{species}/"
         local_path = f"{target_dir_base}/{species}"
 
-        self.logger.info(f"Downloading {species} dependencies to {local_path}.")
+        # Get list of all files that should be downloaded from S3
+        expected_files = []
+        missing_files = []
+
         try:
-            # List all objects in the prefix
+            # List all objects in S3 to get expected files
             paginator = self.s3_client.get_paginator("list_objects_v2")
             pages = paginator.paginate(
                 Bucket=self.bucket_name, Prefix=s3_prefix, RequestPayer="requester"
             )
 
+            for page in pages:
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    relative_path = key[len(s3_prefix) :]
+                    if not relative_path:  # Skip directory markers
+                        continue
+                    expected_files.append(relative_path)
+
+                    # Check if local file exists
+                    local_file_path = Path(f"{local_path}/{relative_path}")
+                    if not local_file_path.exists():
+                        missing_files.append(relative_path)
+        except Exception as e:
+            self.logger.exception(f"Failed to list S3 objects: {e}")
+            raise
+
+        # Check if we should skip download or proceed
+        if not overwrite and expected_files:
+            if not missing_files:
+                self.logger.info(
+                    f"All {len(expected_files)} dependency files for {species} already exist "
+                    f"at {target_dir}. Skipping download."
+                )
+                return
+            else:
+                self.logger.warning(
+                    f"Dependencies directory exists but {len(missing_files)} out of "
+                    f"{len(expected_files)} files are missing. Proceeding with download."
+                )
+
+        self.logger.info(f"Downloading {species} dependencies to {local_path}.")
+
+        try:
+            # Download all files
+            paginator = self.s3_client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(
+                Bucket=self.bucket_name, Prefix=s3_prefix, RequestPayer="requester"
+            )
+
+            files_downloaded = 0
             for page in pages:
                 for obj in page.get("Contents", []):
                     # Get the relative path
@@ -379,6 +415,9 @@ class CpGPTInferencer:
                             str(local_file_path),
                             ExtraArgs={"RequestPayer": "requester"},
                         )
+                        files_downloaded += 1
+
+            self.logger.info(f"Downloaded {files_downloaded} files for {species} dependencies.")
         except Exception as e:
             self.logger.exception(f"Failed to download dependencies: {e}")
             raise
@@ -443,24 +482,60 @@ class CpGPTInferencer:
         target_dir = Path(f"{target_dir_base}/cpgcorpus/raw/{gse_id}")
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # If target directory already has content and overwrite is False, skip download
-        if any(target_dir.iterdir()) and not overwrite:
-            self.logger.info(
-                f"Dataset {gse_id} already exists at {target_dir} (skipping download)."
-            )
-            return
-
         # Download the dataset
         local_path = f"{target_dir_base}/cpgcorpus/raw/{gse_id}"
-        self.logger.info(f"Downloading dataset {gse_id} to {local_path}.")
+
+        # Get list of all files that should be downloaded from S3
+        expected_files = []
+        missing_files = []
 
         try:
-            # List all objects in the prefix
+            # List all objects in S3 to get expected files
             paginator = self.s3_client.get_paginator("list_objects_v2")
             pages = paginator.paginate(
                 Bucket=self.bucket_name, Prefix=s3_prefix, RequestPayer="requester"
             )
 
+            for page in pages:
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    relative_path = key[len(s3_prefix) :]
+                    if not relative_path:  # Skip directory markers
+                        continue
+                    expected_files.append(relative_path)
+
+                    # Check if local file exists
+                    local_file_path = Path(f"{local_path}/{relative_path}")
+                    if not local_file_path.exists():
+                        missing_files.append(relative_path)
+        except Exception as e:
+            self.logger.exception(f"Failed to list S3 objects for dataset {gse_id}: {e}")
+            raise
+
+        # Check if we should skip download or proceed
+        if not overwrite and expected_files:
+            if not missing_files:
+                self.logger.info(
+                    f"All {len(expected_files)} files for dataset {gse_id} already exist "
+                    f"at {target_dir}. Skipping download."
+                )
+                return
+            else:
+                self.logger.warning(
+                    f"Dataset directory exists but {len(missing_files)} out of "
+                    f"{len(expected_files)} files are missing. Proceeding with download."
+                )
+
+        self.logger.info(f"Downloading dataset {gse_id} to {local_path}.")
+
+        try:
+            # Download all files
+            paginator = self.s3_client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(
+                Bucket=self.bucket_name, Prefix=s3_prefix, RequestPayer="requester"
+            )
+
+            files_downloaded = 0
             for page in pages:
                 for obj in page.get("Contents", []):
                     # Get the relative path
@@ -481,6 +556,9 @@ class CpGPTInferencer:
                             str(local_file_path),
                             ExtraArgs={"RequestPayer": "requester"},
                         )
+                        files_downloaded += 1
+
+            self.logger.info(f"Downloaded {files_downloaded} files for dataset {gse_id}.")
         except Exception as e:
             self.logger.exception(f"Failed to download dataset: {e}")
             raise

@@ -186,6 +186,7 @@ class CpGPTDataset(Dataset):
             np.ndarray: Array of DNA embeddings for the given positions
 
         Raises:
+            FileNotFoundError: If DNA embeddings file is missing
             KeyError: If species or genomic locations not found in embeddings
 
         """
@@ -198,18 +199,90 @@ class CpGPTDataset(Dataset):
             / self.dna_llm
             / f"{self.dna_context_len}bp_dna_embeddings.mmap"
         )
+
+        # Check if the embeddings file exists
+        if not embeddings_file.exists():
+            # Check if the parent directories exist to provide more specific guidance
+            dna_embeddings_dir = Path(self.embedder.dependencies_dir) / "dna_embeddings"
+            species_dir = dna_embeddings_dir / species
+            llm_dir = species_dir / self.dna_llm
+
+            if not dna_embeddings_dir.exists():
+                error_msg = (
+                    f"DNA embeddings directory is missing: {dna_embeddings_dir}\n"
+                    f"This suggests that dependencies for species '{species}' were not downloaded "
+                    f"or the download was incomplete.\n\n"
+                    f"To fix this issue, run:\n"
+                    f"  inferencer.download_dependencies(species='{species}', overwrite=True)\n\n"
+                    f"The 'overwrite=True' parameter ensures all files are re-downloaded even if "
+                    f"the directory structure exists."
+                )
+            elif not species_dir.exists():
+                error_msg = (
+                    f"Species directory is missing: {species_dir}\n"
+                    f"Dependencies for species '{species}' were not downloaded or are incomplete.\n\n"
+                    f"To fix this issue, run:\n"
+                    f"  inferencer.download_dependencies(species='{species}', overwrite=True)"
+                )
+            elif not llm_dir.exists():
+                error_msg = (
+                    f"DNA language model directory is missing: {llm_dir}\n"
+                    f"Dependencies for species '{species}' and model '{self.dna_llm}' were not "
+                    f"downloaded or are incomplete.\n\n"
+                    f"To fix this issue, run:\n"
+                    f"  inferencer.download_dependencies(species='{species}', overwrite=True)"
+                )
+            else:
+                error_msg = (
+                    f"DNA embeddings file is missing: {embeddings_file}\n"
+                    f"This specific embeddings file for {self.dna_context_len}bp context length "
+                    f"was not downloaded or is corrupted.\n\n"
+                    f"To fix this issue, run:\n"
+                    f"  inferencer.download_dependencies(species='{species}', overwrite=True)\n\n"
+                    f"The 'overwrite=True' parameter ensures all files are re-downloaded even if "
+                    f"some files appear to exist."
+                )
+
+            self.logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+
         embeddings_index_dict = self.embedder.ensembl_metadata_dict[species][self.dna_llm][
             self.dna_context_len
         ]
-        embeddings = np.memmap(
-            embeddings_file,
-            dtype="float32",
-            mode="r",
-            shape=(len(embeddings_index_dict), embedding_size),
-        )
-        embedding_indices = [
-            embeddings_index_dict[f"{reverse_vocab_dict[chrom]}:{pos}"] for chrom, pos in var
-        ]
+
+        try:
+            embeddings = np.memmap(
+                embeddings_file,
+                dtype="float32",
+                mode="r",
+                shape=(len(embeddings_index_dict), embedding_size),
+            )
+        except (OSError, ValueError) as e:
+            error_msg = (
+                f"Failed to open DNA embeddings file: {embeddings_file}\n"
+                f"The file may be corrupted or incomplete. Original error: {e}\n\n"
+                f"To fix this issue, run:\n"
+                f"  inferencer.download_dependencies(species='{species}', overwrite=True)\n\n"
+                f"This will re-download all dependency files, including the embeddings."
+            )
+            self.logger.error(error_msg)
+            raise FileNotFoundError(error_msg) from e
+
+        try:
+            embedding_indices = [
+                embeddings_index_dict[f"{reverse_vocab_dict[chrom]}:{pos}"] for chrom, pos in var
+            ]
+        except KeyError as e:
+            # Provide more helpful error for missing genomic locations
+            missing_location = str(e).strip("'\"")
+            error_msg = (
+                f"Genomic location not found in embeddings index: {missing_location}\n"
+                f"This could indicate a mismatch between the dataset and the available embeddings.\n"
+                f"Make sure you're using the correct species ('{species}') and that the "
+                f"embeddings were generated for the genomic coordinates in your dataset."
+            )
+            self.logger.error(error_msg)
+            raise KeyError(error_msg) from e
 
         return embeddings[embedding_indices]
 
