@@ -48,12 +48,16 @@ trainer:
 
 # ===== Data Configuration =====
 data:
+
+  _target_: cpgpt.data.cpgpt_datamodule.CpGPTDataModule
+
   batch_size: 16
 
   # Data paths - see quick setup tutorial for data preparation instructions
   train_dir: ${paths.data_dir}/mydata/processed/train
   val_dir: ${paths.data_dir}/mydata/processed/val
   test_dir: ${paths.data_dir}/mydata/processed/test
+  dependencies_dir: ${paths.dependencies_dir}/human
 
   # Maximum length of input sequence
   max_length: 20000

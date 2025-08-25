@@ -287,7 +287,15 @@ More tutorials will be added soon!
 
 1. **Download dependencies** if you have not already done so by following the steps in the <a href="tutorials/quick_setup.ipynb">quick setup tutorial notebook</a>.
 
-2. **Prepare your data** by following the steps in the <a href="tutorials/quick_setup.ipynb">quick setup tutorial notebook</a>.
+2. **Prepare your data** by following the steps in the <a href="tutorials/quick_setup.ipynb">quick setup tutorial notebook</a>. If you would like to predict a variable (e.g. age), add the argument metadata_cols to the datasaver:.
+
+```python
+datasaver = CpGPTDataSaver(
+    data_paths=ARROW_DF_FILTERED_PATH,
+    processed_dir=PROCESSED_DIR,
+    metadata_cols=["age_col_name"],
+)
+```
 
 </details>
 

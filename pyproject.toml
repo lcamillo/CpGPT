@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "CpGPT"
-version = "0.0.5"
+version = "0.0.6"
 description = "CpGPT: A Foundation Model for DNA Methylation"
 authors = ["Lucas Paulo de Lima Camillo <lucas_camillo@alumni.brown.edu>"]
 license = "Non-commercial"
@@ -21,7 +21,7 @@ homepage = "https://github.com/lcamillo/CpGPT"
 repository = "https://github.com/lcamillo/CpGPT"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.14"
 transformers = ">=4.44.2"
 torchvision = ">=0.20.1"
 lightning = ">=2.2.0"
