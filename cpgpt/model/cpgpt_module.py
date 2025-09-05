@@ -56,6 +56,7 @@ class CpGPTLitModule(LightningModule):
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
         compile: bool = False,
+        seed: int = 42,
     ) -> None:
         """Initialize the CpGPTLitModule.
 
@@ -65,6 +66,7 @@ class CpGPTLitModule(LightningModule):
             optimizer (torch.optim.Optimizer): Optimizer for model training.
             scheduler (Optional[torch.optim.lr_scheduler.LRScheduler]): Learning rate scheduler.
             compile (bool): Whether to compile the model using torch.compile.
+            seed: Seed for random number generation.
 
         Note:
             The module initializes various metrics for tracking training progress and
@@ -90,7 +92,7 @@ class CpGPTLitModule(LightningModule):
         self.val_loss_best = MinMetric()
 
         # for random number generation
-        self.rng = np.random.default_rng()
+        self.rng = np.random.default_rng(seed)
 
         # Register betas, alphas, and alphas_cumprod if diffusion is used
         if self.hparams.training["diffusion"]:

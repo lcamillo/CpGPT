@@ -39,6 +39,7 @@ class CpGPTDataset(Dataset):
         sorting_strategy: str = "sorted_chromosome",
         dna_context_len: int = 2001,
         dna_llm: str = "nucleotide-transformer-v2-500m-multi-species",
+        seed: int = 42,
     ) -> None:
         """Initialize the CpGData dataset.
 
@@ -49,6 +50,7 @@ class CpGPTDataset(Dataset):
             sorting_strategy: Strategy for sorting CpG sites.
             dna_context_len: Context length for DNA sequences.
             dna_llm: Name of the DNA language model to use.
+            seed: Seed for random number generation.
 
         Raises:
             ValueError: If any of the input parameters are invalid.
@@ -85,8 +87,8 @@ class CpGPTDataset(Dataset):
         self.sorting_strategy = sorting_strategy
         self.dna_context_len = dna_context_len
         self.dna_llm = dna_llm
-
-        self.rng = np.random.default_rng()
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
         self.logger = get_class_logger(self.__class__)
 
         self._load_dataset_metrics()

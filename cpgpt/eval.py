@@ -47,6 +47,9 @@ def evaluate(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
         msg = "model_ckpt_path must be specified in config"
         raise ValueError(msg)
 
+    log.info(f"Using seed: 42")
+    L.seed_everything(42, workers=True)
+
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
 
